@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>dev.cuongnb.ChromeProfileBar</string>
+	<key>CFBundleName</key>
+	<string>ChromeProfileBar</string>
+	<key>CFBundleDisplayName</key>
+	<string>Chrome Profile Bar</string>
+	<key>CFBundleExecutable</key>
+	<string>ChromeProfileBar</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Chrome Profile Bar focuses and names Google Chrome windows for your profiles.</string>
+</dict>
+</plist>
