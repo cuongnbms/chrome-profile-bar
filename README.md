@@ -3,16 +3,25 @@
 A small macOS app (plain AppKit, no Dock icon) that shows a floating bar of Chrome profile
 buttons for jumping straight to each profile's window. It uses about 13 MB of memory footprint.
 
+The bar is styled as a companion to the Dock: same Liquid Glass, same height and corner shape,
+sitting level with it just to its left. Each profile is a tile like a Dock icon showing the
+profile's Google account picture (or its initial on the profile color) with a Chrome badge in
+the corner; hovering shows the name, and a dot under a tile marks the active profile.
+Right-click → *Show Labels* switches to labelled buttons instead.
+
 | Action | Result |
 |---|---|
 | Click a button | Focus the profile's window (found by given name); if there is none, open a new window with `--profile-directory` and name it after 2.5 seconds |
 | Alt + Click | Set the given name of the frontmost Chrome window to the profile's `window` (and clear that name from other windows) |
-| Drag the background / ⋮ | Move the bar; the position is remembered |
-| Right-click | Launch at Login, Match Window Titles (Accessibility), Open/Reload Config, Quit |
+| Drag the background (the edge around the tiles, or ⋮ with labels) | Move the bar; the position is remembered. Dropped level with the Dock it stays attached, anywhere else it detaches |
+| Right-click | Show Labels, Attach to Dock, Launch at Login, Match Window Titles (Accessibility), Open/Reload Config, Quit |
 | Ctrl+Alt+P | Show/hide the bar |
 | Ctrl+Alt+1…9 | Jump to profile 1…9 |
 
-The button of the active profile (the focused Chrome window) is highlighted. The app ignores any
+The button of the active profile (the focused Chrome window) is highlighted. While *Attach to
+Dock* is on, the bar follows the Dock's height and stays next to it; with the Accessibility
+permission it also lines up with the Dock's left edge and follows it as apps launch and quit;
+without it, drag the bar next to the Dock once and it keeps that spot. The app ignores any
 Chrome instance running with `--enable-automation` (e.g. chrome-devtools-mcp) and always sends
 Apple Events by pid to your own Chrome.
 

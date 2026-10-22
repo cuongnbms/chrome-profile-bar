@@ -87,6 +87,51 @@ import Testing
     }
 }
 
+@Suite struct DockTests {
+    let screen = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+    let band = DockBand(minY: 4, height: 53)
+    let size = CGSize(width: 400, height: 53)
+
+    @Test func bandFromVisibleFrame() {
+        #expect(bottomDockBand(frame: screen, visibleFrame: CGRect(x: 0, y: 59, width: 1920, height: 991)) == band)
+    }
+
+    @Test func noBandWithoutBottomDock() {
+        #expect(bottomDockBand(frame: screen, visibleFrame: CGRect(x: 0, y: 0, width: 1920, height: 1050)) == nil)
+        // Dock on the left: the strip is horizontal, not at the bottom.
+        #expect(bottomDockBand(frame: screen, visibleFrame: CGRect(x: 60, y: 0, width: 1860, height: 1050)) == nil)
+        // A secondary screen below the menu bar screen keeps its own origin.
+        let side = CGRect(x: 1920, y: -200, width: 1920, height: 1080)
+        #expect(bottomDockBand(frame: side, visibleFrame: side) == nil)
+    }
+
+    @Test func heightFollowsTheDockWithinLimits() {
+        #expect(dockHeight(tileSize: 39) == 53)
+        #expect(barHeight(dockHeight: 53) == 53)
+        #expect(barHeight(dockHeight: nil) == 36)
+        #expect(barHeight(dockHeight: 20) == 36)
+        #expect(barHeight(dockHeight: 142) == 64)
+    }
+
+    @Test func sitsLeftOfTheDock() {
+        #expect(dockedOrigin(size: size, band: band, dockMinX: 452, fallbackX: 0, screen: screen) == CGPoint(x: 44, y: 4))
+    }
+
+    @Test func centersShorterBarOnTheBand() {
+        let big = DockBand(minY: 4, height: 142)
+        let o = dockedOrigin(size: CGSize(width: 400, height: 64), band: big, dockMinX: 900, fallbackX: 0, screen: screen)
+        #expect(o == CGPoint(x: 492, y: 43))
+    }
+
+    @Test func keepsFallbackXWithoutDockFrame() {
+        #expect(dockedOrigin(size: size, band: band, dockMinX: nil, fallbackX: 41, screen: screen) == CGPoint(x: 41, y: 4))
+    }
+
+    @Test func clampsWhenTheDockLeavesNoRoom() {
+        #expect(dockedOrigin(size: size, band: band, dockMinX: 200, fallbackX: 0, screen: screen) == CGPoint(x: 0, y: 4))
+    }
+}
+
 @Suite struct ProcessArgumentsTests {
     @Test func readsOwnArguments() throws {
         let args = try #require(processArguments(getpid()))

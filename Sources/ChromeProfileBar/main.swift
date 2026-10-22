@@ -4,21 +4,52 @@ import ServiceManagement
 
 @MainActor
 final class AppController: NSObject, NSApplicationDelegate {
-    private static let originKey = "panelOrigin"
+    private static let originKey = "panelOrigin", attachKey = "attachToDock", labelsKey = "showLabels"
+    /// Left edge of the Dock's glass relative to its AX icon list.
+    private static let dockListInset: CGFloat = 0
 
     private var profiles: [Profile] = []
+    private var avatars: [NSImage?] = []
     private let chrome = Chrome()
     private let hotKeys = HotKeys()
     private let bar = BarView()
     private lazy var panel = BarPanel(bar: bar)
     private lazy var tracker = ActiveTracker(chrome: chrome) { [weak self] in self?.refreshActive() }
+    private var placedOrigin: NSPoint?
+    private var placeTask: Task<Void, Never>?
+    private var dropTask: Task<Void, Never>?
+
+    /// Keep the bar next to the Dock; dragging it away turns this off.
+    private var attached: Bool {
+        get { UserDefaults.standard.object(forKey: Self.attachKey) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: Self.attachKey) }
+    }
+
+    /// Labelled buttons instead of Dock-like tiles.
+    private var showLabels: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.labelsKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.labelsKey) }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         bar.onClick = { [weak self] i, alt in alt ? self?.assign(i) : self?.switchTo(i) }
         bar.menuProvider = { [weak self] in self?.makeMenu() ?? NSMenu() }
+        bar.badge = Chrome.icon
         apply(loadProfiles() ?? [])
         NotificationCenter.default.addObserver(forName: NSWindow.didMoveNotification, object: panel, queue: .main) { _ in
-            MainActor.assumeIsolated { self.saveOrigin() }
+            MainActor.assumeIsolated { self.moved() }
+        }
+        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil,
+                                               queue: .main) { _ in
+            MainActor.assumeIsolated { self.placeSoon() }
+        }
+        // Apps with a Dock icon change the Dock's width when they launch or quit.
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+            NSWorkspace.shared.notificationCenter.addObserver(forName: name, object: nil, queue: .main) { n in
+                let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                guard app?.activationPolicy == .regular else { return }
+                MainActor.assumeIsolated { self.placeSoon() }
+            }
         }
         panel.orderFrontRegardless()
         tracker.start()
@@ -38,13 +69,8 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     private func apply(_ profiles: [Profile]) {
         self.profiles = profiles
-        let size = bar.configure(profiles)
-        let saved = (UserDefaults.standard.array(forKey: Self.originKey) as? [Double]).flatMap {
-            $0.count == 2 ? CGPoint(x: $0[0], y: $0[1]) : nil
-        }
-        let origin = placeOnScreen(saved, size: size, screens: NSScreen.screens.map(\.frame))
-            ?? defaultOrigin(size: size, visibleFrame: (NSScreen.main ?? NSScreen.screens[0]).visibleFrame)
-        panel.setFrame(NSRect(origin: origin, size: size), display: true)
+        avatars = profiles.map { Chrome.avatar(dir: $0.dir) }
+        place()
 
         hotKeys.unregisterAll()
         hotKeys.register(keyCode: HotKeys.keyP, modifiers: HotKeys.ctrlAlt) { [weak self] in self?.toggle() }
@@ -53,8 +79,70 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func saveOrigin() {
+    // MARK: Placement
+
+    /// As tall as the Dock; left of it when attached, else at the saved origin.
+    private func place() {
+        let screens = NSScreen.screens
+        let docked = dockedScreen()
+        let size = bar.configure(profiles, avatars: avatars, labels: showLabels,
+                                 height: barHeight(dockHeight: docked?.band.height ?? Dock.tileSize.map(dockHeight)))
+        panel.setCornerRadius(bar.cornerRadius)
+
+        let saved = (UserDefaults.standard.array(forKey: Self.originKey) as? [Double]).flatMap {
+            $0.count == 2 ? CGPoint(x: $0[0], y: $0[1]) : nil
+        }
+        var origin = placeOnScreen(saved, size: size, screens: screens.map(\.frame))
+        if attached, let docked {
+            let list = Dock.listFrame()
+            origin = dockedOrigin(size: size, band: docked.band, dockMinX: list.map { $0.minX - Self.dockListInset },
+                                  fallbackX: origin?.x ?? docked.screen.minX, screen: docked.screen)
+            log.info("dock band \(String(describing: docked.band), privacy: .public) list \(String(describing: list), privacy: .public) ax \(WindowTitles.isTrusted)")
+        }
+        let frame = NSRect(origin: origin ?? defaultOrigin(size: size, visibleFrame: (NSScreen.main ?? screens[0]).visibleFrame),
+                           size: size)
+        guard frame != panel.frame else { return }
+        placedOrigin = frame.origin
+        panel.setFrame(frame, display: true)
+    }
+
+    /// The screen with a visible bottom Dock, and the Dock's band on it.
+    private func dockedScreen() -> (screen: CGRect, band: DockBand)? {
+        NSScreen.screens.lazy.compactMap { s in
+            bottomDockBand(frame: s.frame, visibleFrame: s.visibleFrame).map { (screen: s.frame, band: $0) }
+        }.first
+    }
+
+    /// The Dock animates its width, so wait for it to settle.
+    private func placeSoon() {
+        placeTask?.cancel()
+        placeTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.6))
+            guard !Task.isCancelled else { return }
+            self.place()
+        }
+    }
+
+    private func moved() {
+        guard panel.frame.origin != placedOrigin else { return }  // our own setFrame
         UserDefaults.standard.set([panel.frame.origin.x, panel.frame.origin.y], forKey: Self.originKey)
+        dropTask?.cancel()
+        dropTask = Task { @MainActor in
+            while NSEvent.pressedMouseButtons != 0 {
+                try? await Task.sleep(for: .milliseconds(100))
+                if Task.isCancelled { return }
+            }
+            self.dropped()
+        }
+    }
+
+    /// Dropped level with the Dock: stay attached (at the new x if the Dock's frame is unknown);
+    /// anywhere else: detach.
+    private func dropped() {
+        let near = dockedScreen().map { abs(panel.frame.midY - $0.band.minY - $0.band.height / 2) < $0.band.height } ?? false
+        log.info("dropped at \(String(describing: self.panel.frame.origin), privacy: .public), attached: \(near)")
+        attached = near
+        if near { place() }
     }
 
     // MARK: Actions
@@ -97,7 +185,12 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     private func toggle() {
-        if panel.isVisible { panel.orderOut(nil) } else { panel.orderFrontRegardless() }
+        if panel.isVisible {
+            bar.clearHover()
+            panel.orderOut(nil)
+        } else {
+            panel.orderFrontRegardless()
+        }
         log.info("toggle: visible=\(self.panel.isVisible)")
     }
 
@@ -126,6 +219,8 @@ final class AppController: NSObject, NSApplicationDelegate {
             item.state = on ? .on : .off
             menu.addItem(item)
         }
+        add("Show Labels", #selector(toggleLabels), on: showLabels)
+        add("Attach to Dock", #selector(toggleAttach), on: attached)
         add("Launch at Login", #selector(toggleLogin), on: SMAppService.mainApp.status == .enabled)
         add("Match Window Titles (Accessibility)…", #selector(accessibility), on: WindowTitles.isTrusted)
         menu.addItem(.separator())
@@ -134,6 +229,16 @@ final class AppController: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         add("Quit Chrome Profile Bar", #selector(quit))
         return menu
+    }
+
+    @objc private func toggleLabels() {
+        showLabels.toggle()
+        place()
+    }
+
+    @objc private func toggleAttach() {
+        attached.toggle()
+        place()
     }
 
     @objc private func toggleLogin() {

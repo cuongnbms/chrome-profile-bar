@@ -24,6 +24,17 @@ final class Chrome {
 
     var pid: pid_t? { app?.processIdentifier }
 
+    /// Chrome's app icon, for badging the profile tiles.
+    nonisolated static var icon: NSImage? {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID).map { NSWorkspace.shared.icon(forFile: $0.path) }
+    }
+
+    /// The profile's Google account picture, if Chrome has saved one.
+    nonisolated static func avatar(dir: String) -> NSImage? {
+        NSImage(contentsOf: FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: "Library/Application Support/Google/Chrome/\(dir)/Google Profile Picture.png"))
+    }
+
     func isUserChrome(_ app: NSRunningApplication) -> Bool {
         app.bundleIdentifier == Self.bundleID && !isAutomation(app.processIdentifier)
     }
