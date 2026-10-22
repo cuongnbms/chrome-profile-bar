@@ -16,9 +16,10 @@ swift build -c release --arch arm64
 BIN="$(swift build -c release --arch arm64 --show-bin-path)/ChromeProfileBar"
 
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/ChromeProfileBar"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"  # regenerate: swift scripts/make-icon.swift
 
 if security find-identity -p codesigning | grep -qF "\"$IDENTITY\""; then
   codesign --force --sign "$IDENTITY" --identifier "$BUNDLE_ID" "$APP"

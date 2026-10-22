@@ -26,6 +26,7 @@ Cần Swift 6 (Command Line Tools là đủ, không cần Xcode).
 ./build.sh                       # -> build/ChromeProfileBar.app
 ./build.sh install               # build, chép vào /Applications rồi khởi động lại app
 ./scripts/test.sh                # unit test (config, so khớp tiêu đề, vị trí, đọc argv)
+swift scripts/make-icon.swift     # vẽ lại Resources/AppIcon.icns (chỉ cần khi đổi icon)
 ```
 
 ### Vì sao cần chứng chỉ ký riêng
