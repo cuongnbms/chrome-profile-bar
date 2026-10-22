@@ -10,6 +10,7 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     private var profiles: [Profile] = []
     private var avatars: [NSImage?] = []
+    private var avatarDates: [Date?] = []
     private let chrome = Chrome()
     private let hotKeys = HotKeys()
     private let bar = BarView()
@@ -69,7 +70,7 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     private func apply(_ profiles: [Profile]) {
         self.profiles = profiles
-        avatars = profiles.map { Chrome.avatar(dir: $0.dir) }
+        loadAvatars()
         place()
 
         hotKeys.unregisterAll()
@@ -194,7 +195,25 @@ final class AppController: NSObject, NSApplicationDelegate {
         log.info("toggle: visible=\(self.panel.isVisible)")
     }
 
+    private func loadAvatars() {
+        avatarDates = profiles.map { Self.modified(Chrome.avatarURL(dir: $0.dir)) }
+        avatars = profiles.map { NSImage(contentsOf: Chrome.avatarURL(dir: $0.dir)) }
+    }
+
+    /// Picks up pictures Chrome has re-downloaded since they were loaded.
+    private func reloadAvatarsIfChanged() {
+        guard profiles.map({ Self.modified(Chrome.avatarURL(dir: $0.dir)) }) != avatarDates else { return }
+        log.info("profile pictures changed, reloading")
+        loadAvatars()
+        place()
+    }
+
+    private static func modified(_ url: URL) -> Date? {
+        try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+    }
+
     private func refreshActive() {
+        reloadAvatarsIfChanged()
         let i = detectActive()
         if i != bar.activeIndex { log.info("active: \(i.map { self.profiles[$0].label } ?? "none", privacy: .public)") }
         bar.activeIndex = i

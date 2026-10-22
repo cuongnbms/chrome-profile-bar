@@ -29,10 +29,11 @@ final class Chrome {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID).map { NSWorkspace.shared.icon(forFile: $0.path) }
     }
 
-    /// The profile's Google account picture, if Chrome has saved one.
-    nonisolated static func avatar(dir: String) -> NSImage? {
-        NSImage(contentsOf: FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: "Library/Application Support/Google/Chrome/\(dir)/Google Profile Picture.png"))
+    /// Where Chrome saves the profile's Google account picture. Chrome re-downloads it on its
+    /// own schedule (about daily, or on restart), not right after the picture changes.
+    nonisolated static func avatarURL(dir: String) -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: "Library/Application Support/Google/Chrome/\(dir)/Google Profile Picture.png")
     }
 
     func isUserChrome(_ app: NSRunningApplication) -> Bool {
