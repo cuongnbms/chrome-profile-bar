@@ -1,67 +1,68 @@
 # Chrome Profile Bar
 
-App macOS nhỏ (AppKit thuần, không Dock icon) hiện một thanh nổi gồm các nút profile Chrome
-để nhảy nhanh tới window của từng profile. Thay cho một Hammerspoon
-script, nhưng chỉ tốn khoảng 13 MB footprint thay vì cả một Hammerspoon.
+A small macOS app (plain AppKit, no Dock icon) that shows a floating bar of Chrome profile
+buttons for jumping straight to each profile's window. It uses about 13 MB of memory footprint.
 
-| Thao tác | Kết quả |
+| Action | Result |
 |---|---|
-| Click nút | Focus window của profile (tìm theo given name); không có thì mở window mới bằng `--profile-directory` và đặt tên cho window đó sau 2.5 giây |
-| Alt + Click | Đặt given name cho window Chrome đang ở trước = `window` của profile (xoá tên đó khỏi các window khác) |
-| Kéo nền / ⋮ | Di chuyển thanh, vị trí được nhớ |
-| Chuột phải | Launch at Login, Match Window Titles (Accessibility), Open/Reload Config, Quit |
-| Ctrl+Alt+P | Ẩn/hiện thanh |
-| Ctrl+Alt+1…9 | Nhảy tới profile 1…9 |
+| Click a button | Focus the profile's window (found by given name); if there is none, open a new window with `--profile-directory` and name it after 2.5 seconds |
+| Alt + Click | Set the given name of the frontmost Chrome window to the profile's `window` (and clear that name from other windows) |
+| Drag the background / ⋮ | Move the bar; the position is remembered |
+| Right-click | Launch at Login, Match Window Titles (Accessibility), Open/Reload Config, Quit |
+| Ctrl+Alt+P | Show/hide the bar |
+| Ctrl+Alt+1…9 | Jump to profile 1…9 |
 
-Nút của profile đang active (window Chrome đang focus) được tô đậm hơn. App bỏ qua mọi instance
-Chrome chạy với `--enable-automation` (ví dụ chrome-devtools-mcp) và luôn gửi Apple Event theo
-pid tới Chrome của bạn.
+The button of the active profile (the focused Chrome window) is highlighted. The app ignores any
+Chrome instance running with `--enable-automation` (e.g. chrome-devtools-mcp) and always sends
+Apple Events by pid to your own Chrome.
 
-## Build & cài đặt
+## Build & install
 
-Cần Swift 6 (Command Line Tools là đủ, không cần Xcode).
+Requires Swift 6 (the Command Line Tools are enough, Xcode is not needed).
 
 ```sh
-./scripts/make-signing-cert.sh   # chỉ cần chạy một lần: tạo identity "ChromeProfileBar Dev" trong login keychain
+./scripts/make-signing-cert.sh   # one-time: creates the "ChromeProfileBar Dev" identity in the login keychain
 ./build.sh                       # -> build/ChromeProfileBar.app
-./build.sh install               # build, chép vào /Applications rồi khởi động lại app
-./scripts/test.sh                # unit test (config, so khớp tiêu đề, vị trí, đọc argv)
-swift scripts/make-icon.swift     # vẽ lại Resources/AppIcon.icns (chỉ cần khi đổi icon)
+./build.sh install               # build, copy to /Applications and restart the app
+./scripts/test.sh                # unit tests (config, title matching, placement, argv parsing)
+swift scripts/make-icon.swift     # redraw Resources/AppIcon.icns (only needed when changing the icon)
 ```
 
-### Vì sao cần chứng chỉ ký riêng
+### Why a dedicated signing certificate
 
-Quyền Automation/Accessibility mà TCC lưu được gắn với *designated requirement* của chữ ký.
-Ký ad-hoc thì requirement là cdhash, đổi sau mỗi lần build, nên macOS sẽ hỏi lại quyền. Ký
-bằng một identity cố định thì requirement là
-`identifier "dev.cuongnb.ChromeProfileBar" and certificate leaf = H"…"`, giữ nguyên qua các
-lần rebuild. Chứng chỉ self-signed không cần được trust để `codesign` dùng (nó hiện
-`CSSMERR_TP_NOT_TRUSTED` trong `security find-identity`, không sao). Kiểm tra:
+The Automation/Accessibility grants stored by TCC are bound to the signature's *designated
+requirement*. With ad-hoc signing the requirement is the cdhash, which changes on every build,
+so macOS asks for permission again. Signing with a fixed identity gives the requirement
+`identifier "dev.cuongnb.ChromeProfileBar" and certificate leaf = H"…"`, which stays the same
+across rebuilds. The self-signed certificate does not need to be trusted for `codesign` to use
+it (`security find-identity` shows `CSSMERR_TP_NOT_TRUSTED`, which is fine). To check:
 
 ```sh
 codesign -dr - /Applications/ChromeProfileBar.app
 ```
 
-Muốn dùng identity khác thì đặt `CODESIGN_IDENTITY="…" ./build.sh`. Nếu không tìm thấy
-identity, `build.sh` ký ad-hoc và in cảnh báo.
+To use a different identity, set `CODESIGN_IDENTITY="…" ./build.sh`. If the identity is not
+found, `build.sh` signs ad-hoc and prints a warning.
 
-## Cấp quyền
+## Permissions
 
-- **Automation → Google Chrome** (bắt buộc): macOS tự hỏi ở lần đầu app điều khiển Chrome. Nếu
-  lỡ từ chối: System Settings → Privacy & Security → Automation → Chrome Profile Bar → bật
-  Google Chrome. Có thể reset bằng `tccutil reset AppleEvents dev.cuongnb.ChromeProfileBar`.
-- **Accessibility** (tuỳ chọn): Chrome scripting chỉ trả về tiêu đề tab, không có đuôi
-  `(<profile>)`. Vì vậy nếu muốn tìm/highlight cả những window *chưa đặt tên* theo tiêu đề như
-  bản Hammerspoon, hãy chọn chuột phải → *Match Window Titles (Accessibility)…* rồi bật app
-  trong System Settings. Không cấp thì app chỉ dựa vào given name: click vào profile chưa có
-  window được đặt tên sẽ mở window mới; dùng Alt+Click để đặt tên cho window có sẵn.
-- Hotkey dùng Carbon `RegisterEventHotKey` nên không cần quyền gì thêm.
+- **Automation → Google Chrome** (required): macOS asks the first time the app controls Chrome.
+  If you denied it: System Settings → Privacy & Security → Automation → Chrome Profile Bar →
+  enable Google Chrome. Reset with `tccutil reset AppleEvents dev.cuongnb.ChromeProfileBar`.
+- **Accessibility** (optional): Chrome scripting only returns tab titles, without the
+  `(<profile>)` suffix. To also find/highlight *unnamed* windows by their title, right-click →
+  *Match Window Titles (Accessibility)…* and enable the app in System Settings. Without it the
+  app relies on given names only: clicking a profile with no named window opens a new window;
+  use Alt+Click to name an existing one.
+- Hotkeys use Carbon `RegisterEventHotKey`, so no extra permission is needed. If another app
+  already registers Ctrl+Alt+P or Ctrl+Alt+1…9, one of the two will not receive the key.
 
-Luôn mở app qua `open`/Finder (không chạy thẳng binary) để macOS gán quyền đúng cho app.
+Always launch the app via `open`/Finder (not the binary directly) so macOS attributes the
+permissions to the app.
 
-## Cấu hình
+## Configuration
 
-`~/.config/chrome-profile-bar/profiles.json` (nếu chưa có, app tạo một file mẫu):
+`~/.config/chrome-profile-bar/profiles.json` (the app creates a sample file if it is missing):
 
 ```json
 [
@@ -70,52 +71,46 @@ Luôn mở app qua `open`/Finder (không chạy thẳng binary) để macOS gán
 ]
 ```
 
-| Khoá | Ý nghĩa | Mặc định |
+| Key | Meaning | Default |
 |---|---|---|
-| `label` | Chữ trên nút | bắt buộc |
-| `window` | Given name của window ("Name window…") dùng để tìm window | `label` |
-| `profile` | Tên hiển thị của profile, dùng để so với đuôi tiêu đề window (cần Accessibility) | `label` |
-| `dir` | Phần cuối của "Profile Path" trong `chrome://version` | bắt buộc |
-| `color` | Màu nút `#RRGGBB` | `#4285F4` |
+| `label` | Button text | required |
+| `window` | The window's given name ("Name window…") used to find it | `label` |
+| `profile` | The profile's display name, matched against the window title suffix (needs Accessibility) | `label` |
+| `dir` | Last segment of "Profile Path" in `chrome://version` | required |
+| `color` | Button color `#RRGGBB` | `#4285F4` |
 
-Sửa xong thì chọn chuột phải → *Reload Config* (hoặc quit rồi mở lại app). Vị trí thanh được
-lưu trong `defaults read dev.cuongnb.ChromeProfileBar`.
+After editing, right-click → *Reload Config* (or quit and reopen the app). The bar position is
+stored in `defaults read dev.cuongnb.ChromeProfileBar`.
 
-## Chạy khi đăng nhập
+## Launch at login
 
-Chuột phải → *Launch at Login* (dùng `SMAppService.mainApp`, nên app phải nằm ở
-`/Applications`). App sẽ hiện trong System Settings → General → Login Items.
+Right-click → *Launch at Login* (uses `SMAppService.mainApp`, so the app must live in
+`/Applications`). The app then shows up in System Settings → General → Login Items.
 
-## Chuyển từ Hammerspoon
+## Memory
 
-Nếu đang dùng một script Hammerspoon tương tự, hãy quit Hammerspoon (hoặc gỡ script đó khỏi
-`~/.hammerspoon/init.lua`) trước khi mở app. Nếu không, hotkey Ctrl+Alt+P/1…9 sẽ bị trùng và
-một trong hai bên không nhận được phím.
-
-## Bộ nhớ
-
-Đo trên macOS 26, arm64 với 4 profile:
+Measured on macOS 26, arm64, with 4 profiles:
 
 ```sh
 pid=$(pgrep -x ChromeProfileBar)
-footprint $pid | grep phys_footprint   # ~13 MB, cũng là cột "Memory" trong Activity Monitor
-ps -o rss= -p $pid                     # ~45 MB, gồm cả các trang framework hệ thống dùng chung
+footprint $pid | grep phys_footprint   # ~13 MB, also the "Memory" column in Activity Monitor
+ps -o rss= -p $pid                     # ~45 MB, includes shared system framework pages
 ```
 
-RSS của một app AppKit không làm gì (chỉ một NSPanel) đã khoảng 38 MB, vì RSS đếm cả các
-trang của framework dùng chung với process khác. Footprint mới là phần bộ nhớ riêng của app.
+An idle AppKit app (just one NSPanel) already has about 38 MB RSS, because RSS also counts
+framework pages shared with other processes. Footprint is the memory private to the app.
 
-## Cách hoạt động
+## How it works
 
-- `Chrome.swift` + `AppleEvent.swift`: Apple Event thô (`NSAppleEventDescriptor`) gửi theo pid
-  với các mã trong `scripting.sdef` của Chrome (`GNam` given name, `pidx` index, `pmnd`
-  minimized, `misc/actv`). Không nạp OSAKit/JavaScriptCore. Instance automation được nhận ra
-  bằng cách đọc argv qua `sysctl(KERN_PROCARGS2)`.
-- `ActiveTracker.swift`: refresh khi Chrome được activate (`NSWorkspace`). Chỉ trong lúc
-  Chrome đang ở trước, mỗi giây đọc số hiệu window trên cùng của Chrome qua
-  `CGWindowListCopyWindowInfo` (không cần quyền nào) và chỉ gửi Apple Event khi số này đổi.
-- `Panel.swift`: `NSPanel` dạng `.nonactivatingPanel`, level `.floating`, `.canJoinAllSpaces`
-  + `.stationary`. Click không cướp focus của Chrome.
-- `HotKeys.swift`: Carbon hotkeys. `WindowTitles.swift`: phần dùng Accessibility (tuỳ chọn).
+- `Chrome.swift` + `AppleEvent.swift`: raw Apple Events (`NSAppleEventDescriptor`) sent by pid
+  using the codes from Chrome's `scripting.sdef` (`GNam` given name, `pidx` index, `pmnd`
+  minimized, `misc/actv`). OSAKit/JavaScriptCore are not loaded. Automation instances are
+  detected by reading argv via `sysctl(KERN_PROCARGS2)`.
+- `ActiveTracker.swift`: refreshes when Chrome is activated (`NSWorkspace`). Only while Chrome
+  is frontmost, it reads Chrome's top window number once a second via
+  `CGWindowListCopyWindowInfo` (no permission needed) and sends Apple Events only when it changes.
+- `Panel.swift`: a `.nonactivatingPanel` `NSPanel` at `.floating` level, `.canJoinAllSpaces`
+  + `.stationary`. Clicks do not steal focus from Chrome.
+- `HotKeys.swift`: Carbon hotkeys. `WindowTitles.swift`: the optional Accessibility part.
 
 Log: `log stream --info --predicate 'subsystem == "dev.cuongnb.ChromeProfileBar"'`.
