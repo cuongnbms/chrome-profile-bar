@@ -17,7 +17,10 @@ final class AppController: NSObject, NSApplicationDelegate {
     private lazy var panel = BarPanel(bar: bar)
     private lazy var tracker = ActiveTracker(chrome: chrome) { [weak self] in self?.refreshActive() }
     private var placedOrigin: NSPoint?
+    /// The Dock's icon list frame the bar was last placed against.
+    private var dockList: CGRect?
     private var placeTask: Task<Void, Never>?
+    private var dockWatch: Task<Void, Never>?
     private var dropTask: Task<Void, Never>?
 
     /// Keep the bar next to the Dock; dragging it away turns this off.
@@ -54,6 +57,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
         panel.orderFrontRegardless()
         tracker.start()
+        watchDock()
         refreshActive()
     }
 
@@ -96,8 +100,12 @@ final class AppController: NSObject, NSApplicationDelegate {
         var origin = placeOnScreen(saved, size: size, screens: screens.map(\.frame))
         if attached, let docked {
             let list = Dock.listFrame()
+            dockList = list
+            // Without the Dock's frame, stay put (a transient AX failure must not move the bar);
+            // before the first placement, use the saved spot.
+            let fallbackX = placedOrigin == nil ? origin?.x ?? docked.screen.minX : panel.frame.origin.x
             origin = dockedOrigin(size: size, band: docked.band, dockMinX: list.map { $0.minX - Self.dockListInset },
-                                  fallbackX: origin?.x ?? docked.screen.minX, screen: docked.screen)
+                                  fallbackX: fallbackX, screen: docked.screen)
             log.info("dock band \(String(describing: docked.band), privacy: .public) list \(String(describing: list), privacy: .public) ax \(WindowTitles.isTrusted)")
         }
         let frame = NSRect(origin: origin ?? defaultOrigin(size: size, visibleFrame: (NSScreen.main ?? screens[0]).visibleFrame),
@@ -121,6 +129,19 @@ final class AppController: NSObject, NSApplicationDelegate {
             try? await Task.sleep(for: .seconds(0.6))
             guard !Task.isCancelled else { return }
             self.place()
+        }
+    }
+
+    /// The Dock also changes width without any app launching or quitting: windows minimized
+    /// into it, items dragged in or out, apps that become regular after launch. Poll its icon
+    /// list and re-place when it moved.
+    private func watchDock() {
+        dockWatch = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard attached, dockedScreen() != nil, Dock.listFrame() != dockList else { continue }
+                place()
+            }
         }
     }
 

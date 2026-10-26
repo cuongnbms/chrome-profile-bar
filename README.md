@@ -20,7 +20,8 @@ Right-click → *Show Labels* switches to labelled buttons instead.
 
 The button of the active profile (the focused Chrome window) is highlighted. While *Attach to
 Dock* is on, the bar follows the Dock's height and stays next to it; with the Accessibility
-permission it also lines up with the Dock's left edge and follows it as apps launch and quit;
+permission it also lines up with the Dock's left edge and follows it whenever the Dock changes
+width (apps launching and quitting, windows minimized into it, items added or removed);
 without it, drag the bar next to the Dock once and it keeps that spot. The app ignores any
 Chrome instance running with `--enable-automation` (e.g. chrome-devtools-mcp) and always sends
 Apple Events by pid to your own Chrome.
